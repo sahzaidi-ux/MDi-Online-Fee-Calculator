@@ -1,15 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { UNIVERSITIES } from '../constants';
 import { LeadFormData } from '../types';
-import { ChevronDown, CheckCircle, GraduationCap, Building2, Calculator, Info, Loader2 } from 'lucide-react';
+import { ChevronDown, CheckCircle, GraduationCap, Building2, Calculator, Info, Loader2, AlertCircle, Mail } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 
 // --- EMAILJS CONFIGURATION ---
-// IMPORTANT: Use these exact names in your EmailJS template:
-// {{name}}, {{email}}, {{mobile}}, {{city}}, {{university}}, {{program}}, {{total_fee}}
-const EMAILJS_SERVICE_ID: string = 'service_wwubfgj';
-const EMAILJS_TEMPLATE_ID: string = 'template_v0rlx2t';
-const EMAILJS_PUBLIC_KEY: string = 'Zm2u8J-mbgFDC9i9K';
+const EMAILJS_SERVICE_ID = 'service_wwubfgj';
+const EMAILJS_TEMPLATE_ID = 'template_v0rlx2t';
+const EMAILJS_PUBLIC_KEY = 'Zm2u8J-mbgFDC9i9K';
 
 export const FeeCalculator: React.FC = () => {
   const [selectedUniId, setSelectedUniId] = useState<string>('');
@@ -24,6 +22,12 @@ export const FeeCalculator: React.FC = () => {
 
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Initialize EmailJS once on component mount
+  useEffect(() => {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+  }, []);
 
   const selectedUni = useMemo(() => 
     UNIVERSITIES.find(u => u.id === selectedUniId), 
@@ -37,11 +41,13 @@ export const FeeCalculator: React.FC = () => {
     setSelectedUniId(e.target.value);
     setSelectedDegreeId(''); 
     setIsSubmitted(false);
+    setError(null);
   };
 
   const handleDegreeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedDegreeId(e.target.value);
     setIsSubmitted(false);
+    setError(null);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,11 +59,17 @@ export const FeeCalculator: React.FC = () => {
     return `${currency} ${amount.toLocaleString()}`;
   };
 
+  const totalFeeStr = selectedDegree ? formatMoney(
+    selectedDegree.fees.initialPayment + (selectedDegree.fees.monthlyInstallment * selectedDegree.fees.numberOfInstallments),
+    selectedDegree.fees.currency
+  ) : '';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUni || !selectedDegree) return;
 
     setIsSending(true);
+    setError(null);
 
     const templateParams = {
       to_email: 'online@mdi.com.pk',
@@ -68,31 +80,43 @@ export const FeeCalculator: React.FC = () => {
       university: selectedUni.name,
       program: selectedDegree.name,
       initial_payment: formatMoney(selectedDegree.fees.initialPayment, selectedDegree.fees.currency),
-      total_fee: formatMoney(
-        selectedDegree.fees.initialPayment + (selectedDegree.fees.monthlyInstallment * selectedDegree.fees.numberOfInstallments),
-        selectedDegree.fees.currency
-      )
+      total_fee: totalFeeStr
     };
 
     try {
-      await emailjs.send(
+      const result = await emailjs.send(
         EMAILJS_SERVICE_ID,
         EMAILJS_TEMPLATE_ID,
-        templateParams,
-        EMAILJS_PUBLIC_KEY
+        templateParams
       );
-      setIsSubmitted(true);
-    } catch (error) {
-      console.error("EmailJS error, falling back to mailto:", error);
-      const subject = encodeURIComponent(`Info Request: ${selectedDegree.name} at ${selectedUni.name}`);
-      const body = encodeURIComponent(
-        `Name: ${formData.name}\nEmail: ${formData.email}\nMobile: ${formData.mobile}\nCity: ${formData.city}\n\nUniversity: ${selectedUni.name}\nProgram: ${selectedDegree.name}`
-      );
-      window.location.href = `mailto:online@mdi.com.pk?subject=${subject}&body=${body}`;
-      setIsSubmitted(true);
+
+      if (result.status === 200) {
+        setIsSubmitted(true);
+      } else {
+        throw new Error('Failed to send inquiry');
+      }
+    } catch (err: any) {
+      console.error("EmailJS error:", err);
+      setError("We couldn't send your request automatically. Please use the button below to send it via your email app.");
     } finally {
       setIsSending(false);
     }
+  };
+
+  // Generate mailto link for manual fallback
+  const getMailtoLink = () => {
+    if (!selectedUni || !selectedDegree) return '#';
+    const subject = encodeURIComponent(`Inquiry: ${selectedDegree.name} at ${selectedUni.name}`);
+    const body = encodeURIComponent(
+      `Name: ${formData.name}\n` +
+      `Email: ${formData.email}\n` +
+      `Mobile: ${formData.mobile}\n` +
+      `City: ${formData.city}\n\n` +
+      `Program: ${selectedDegree.name}\n` +
+      `University: ${selectedUni.name}\n` +
+      `Calculated Total Fee: ${totalFeeStr}`
+    );
+    return `mailto:online@mdi.com.pk?subject=${subject}&body=${body}`;
   };
 
   const totalFee = selectedDegree 
@@ -203,11 +227,11 @@ export const FeeCalculator: React.FC = () => {
                    </div>
                    <div className="flex flex-col justify-center space-y-1">
                       <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 shadow-sm"></div>
                         <span className="text-xs text-blue-100">Initial</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-blue-100"></div>
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-100 shadow-sm"></div>
                         <span className="text-xs text-blue-200">Remaining</span>
                       </div>
                    </div>
@@ -222,7 +246,7 @@ export const FeeCalculator: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">Ready to start?</h4>
-                  <p className="text-xs text-slate-500">Enter your details for the full brochure.</p>
+                  <p className="text-xs text-slate-500">Enter your details to receive the full brochure.</p>
                 </div>
               </div>
 
@@ -232,13 +256,26 @@ export const FeeCalculator: React.FC = () => {
                     <CheckCircle size={24} />
                   </div>
                   <h5 className="text-emerald-800 font-bold mb-1">Request Sent!</h5>
-                  <p className="text-xs text-emerald-600">We will contact you shortly.</p>
+                  <p className="text-xs text-emerald-600">We have received your details and will contact you shortly.</p>
                   <button onClick={() => setIsSubmitted(false)} className="mt-4 text-xs font-semibold text-emerald-700 underline">Start Over</button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-3">
-                  <input type="hidden" name="university" value={selectedUni.name} />
-                  <input type="hidden" name="program" value={selectedDegree.name} />
+                  {error && (
+                    <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex flex-col items-center gap-2 animate-in slide-in-from-top-1">
+                      <div className="flex items-center gap-2 text-red-600">
+                        <AlertCircle size={16} />
+                        <span className="text-xs font-medium">{error}</span>
+                      </div>
+                      <a 
+                        href={getMailtoLink()}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-4 rounded flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <Mail size={14} />
+                        Open Email Client
+                      </a>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <input

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { UNIVERSITIES } from '../constants';
 import { LeadFormData } from '../types';
 import { ChevronDown, CheckCircle, GraduationCap, Building2, Calculator, Info, Loader2, AlertCircle, Mail } from 'lucide-react';
@@ -23,11 +23,6 @@ export const FeeCalculator: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Initialize EmailJS once on component mount
-  useEffect(() => {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-  }, []);
 
   const selectedUni = useMemo(() => 
     UNIVERSITIES.find(u => u.id === selectedUniId), 
@@ -84,10 +79,12 @@ export const FeeCalculator: React.FC = () => {
     };
 
     try {
+      // Pass the public key directly as the 4th argument for reliability
       const result = await emailjs.send(
         EMAILJS_SERVICE_ID,
         EMAILJS_TEMPLATE_ID,
-        templateParams
+        templateParams,
+        EMAILJS_PUBLIC_KEY
       );
 
       if (result.status === 200) {
@@ -96,14 +93,15 @@ export const FeeCalculator: React.FC = () => {
         throw new Error('Failed to send inquiry');
       }
     } catch (err: any) {
-      console.error("EmailJS error:", err);
+      console.error("EmailJS sending error:", err);
+      // We set the error state which displays a manual fallback button,
+      // instead of automatically redirecting the user to Outlook.
       setError("We couldn't send your request automatically. Please use the button below to send it via your email app.");
     } finally {
       setIsSending(false);
     }
   };
 
-  // Generate mailto link for manual fallback
   const getMailtoLink = () => {
     if (!selectedUni || !selectedDegree) return '#';
     const subject = encodeURIComponent(`Inquiry: ${selectedDegree.name} at ${selectedUni.name}`);
@@ -114,7 +112,7 @@ export const FeeCalculator: React.FC = () => {
       `City: ${formData.city}\n\n` +
       `Program: ${selectedDegree.name}\n` +
       `University: ${selectedUni.name}\n` +
-      `Calculated Total Fee: ${totalFeeStr}`
+      `Total Fee: ${totalFeeStr}`
     );
     return `mailto:online@mdi.com.pk?subject=${subject}&body=${body}`;
   };
